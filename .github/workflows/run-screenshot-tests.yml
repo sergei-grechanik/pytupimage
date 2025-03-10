@@ -16,30 +16,62 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install uv and set the python version
-        uses: astral-sh/setup-uv@v5
-        with:
-          python-version: "3.13"
-
       - name: Install st-graphics dependencies
         run: |
           sudo apt update
           sudo apt install -y libimlib2-dev libx11-dev zlib1g-dev libfreetype-dev libfontconfig-dev libxft-dev
 
-      - name: Clone st-graphics
+      - name: Clone and build st-graphics
         run: |
           git clone https://github.com/sergei-grechanik/st-graphics.git
-
-      - name: Build st-graphics
-        run: |
           cd st-graphics
           make
+
+      - name: Install uv and set the python version
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
 
       - name: Install the project
         run: uv sync --all-extras --dev
 
       - name: Run screenshot tests
-        uses: coactions/setup-xvfb@v1
+        uses: coactions/setup-xvfb@v1.0.1
         with:
           run: |
-            ./st-graphics/st -e uv run python -m tupimage.testing.cli run *underneath*
+            sudo apt install -y bsdutils imagemagick xdotool
+            mkdir report
+            ./st-graphics/st -e script -e -c ./run-screenshot-tests.sh
+            cp typescript report/
+
+      - name: Dump the tail of the output
+        run: |
+          tail -20 typescript || true
+          echo
+          ls -l report/screenshots || true
+
+      - name: Verify the screenshots and create a report
+        run: |
+          git clone https://github.com/sergei-grechanik/terminal-reference-screenshots.git
+          cp -r terminal-reference-screenshots/st/ report/
+          cd report
+          uv run python -m tupimage.testing.cli compare screenshots/ st/ -o report.html
+
+      - name: Keep the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: report
+          path: ./report/
+
+      - name: Keep the outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: typescript
+          path: typescript
+
+      # - name: Setup tmate session
+      #   if: always()
+      #   uses: mxschmitt/action-tmate@v3
+
